@@ -19,8 +19,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Expose port (Railway will set PORT environment variable)
-EXPOSE $PORT
+# Make start script executable
+RUN chmod +x start.py
 
-# Run the application
-CMD uvicorn server:app --host 0.0.0.0 --port $PORT
+# Set default PORT if not provided
+ENV PORT=8000
+
+# Run the application using Python script
+CMD ["python", "start.py"]
