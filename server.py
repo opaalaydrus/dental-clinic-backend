@@ -37,7 +37,7 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# Google Cloud Storage setup - Railway compatible
+# Google Cloud Storage setup - Railway compatible with JSON credentials
 try:
     import json
     from google.oauth2 import service_account
@@ -51,7 +51,16 @@ try:
         bucket_name = os.environ.get('GOOGLE_CLOUD_BUCKET', 'default-bucket')
         bucket = storage_client.bucket(bucket_name)
         GCS_AVAILABLE = True
-        logger.info("✅ Google Cloud Storage initialized successfully")
+        logger.info("✅ Google Cloud Storage initialized with JSON credentials")
+    elif os.environ.get('GOOGLE_APPLICATION_CREDENTIALS') or os.path.exists('/app/backend/service-account.json'):
+        # Fallback to file-based credentials
+        if os.path.exists('/app/backend/service-account.json'):
+            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = '/app/backend/service-account.json'
+        storage_client = storage.Client()
+        bucket_name = os.environ.get('GOOGLE_CLOUD_BUCKET', 'default-bucket')
+        bucket = storage_client.bucket(bucket_name)
+        GCS_AVAILABLE = True
+        logger.info("✅ Google Cloud Storage initialized with file credentials")
     else:
         storage_client = None
         bucket = None
@@ -298,18 +307,27 @@ async def validate_image_file(file: UploadFile) -> bool:
     return True
 
 async def upload_to_gcs(file: UploadFile, filename: str) -> str:
-    """Upload file to Google Cloud Storage"""
-    blob = bucket.blob(filename)
-    content = await file.read()
-    await file.seek(0)  # Reset file pointer
+    """Upload file to Google Cloud Storage - with fallback for missing GCS"""
+    if not GCS_AVAILABLE or not bucket:
+        # Return a placeholder URL when GCS is not available
+        logger.warning("GCS not available, returning placeholder URL")
+        return f"https://via.placeholder.com/300x300?text=Photo+Upload+Disabled"
     
-    blob.upload_from_string(content, content_type=file.content_type)
-    
-    # Generate a signed URL that's valid for 1 year
-    expiration_time = dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=365)
-    signed_url = blob.generate_signed_url(expiration=expiration_time, method='GET')
-    
-    return signed_url
+    try:
+        blob = bucket.blob(filename)
+        content = await file.read()
+        await file.seek(0)  # Reset file pointer
+        
+        blob.upload_from_string(content, content_type=file.content_type)
+        
+        # Generate a signed URL that's valid for 1 year
+        expiration_time = dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=365)
+        signed_url = blob.generate_signed_url(expiration=expiration_time, method='GET')
+        
+        return signed_url
+    except Exception as e:
+        logger.error(f"GCS upload failed: {e}")
+        return f"https://via.placeholder.com/300x300?text=Upload+Failed"
 
 # Socket.IO events
 @sio.event
