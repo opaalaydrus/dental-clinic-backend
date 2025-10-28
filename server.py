@@ -37,11 +37,27 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# Google Cloud Storage setup
-os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = '/app/backend/service-account.json'
-storage_client = storage.Client()
-bucket_name = os.environ['GOOGLE_CLOUD_BUCKET']
-bucket = storage_client.bucket(bucket_name)
+# Google Cloud Storage setup - Make optional for Railway deployment
+try:
+    # Check if GCS credentials are available
+    if os.environ.get('GOOGLE_APPLICATION_CREDENTIALS') or os.path.exists('/app/backend/service-account.json'):
+        if os.path.exists('/app/backend/service-account.json'):
+            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = '/app/backend/service-account.json'
+        storage_client = storage.Client()
+        bucket_name = os.environ.get('GOOGLE_CLOUD_BUCKET', 'default-bucket')
+        bucket = storage_client.bucket(bucket_name)
+        GCS_AVAILABLE = True
+        logger.info("✅ Google Cloud Storage initialized successfully")
+    else:
+        storage_client = None
+        bucket = None
+        GCS_AVAILABLE = False
+        logger.warning("⚠️ Google Cloud Storage disabled - no credentials found")
+except Exception as e:
+    storage_client = None
+    bucket = None
+    GCS_AVAILABLE = False
+    logger.error(f"⚠️ Google Cloud Storage initialization failed: {e}")
 
 # Authentication Configuration
 ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME', 'admin')
