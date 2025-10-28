@@ -37,13 +37,17 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# Google Cloud Storage setup - Make optional for Railway deployment
+# Google Cloud Storage setup - Railway compatible
 try:
+    import json
+    from google.oauth2 import service_account
+    
     # Check if GCS credentials are available
-    if os.environ.get('GOOGLE_APPLICATION_CREDENTIALS') or os.path.exists('/app/backend/service-account.json'):
-        if os.path.exists('/app/backend/service-account.json'):
-            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = '/app/backend/service-account.json'
-        storage_client = storage.Client()
+    if os.environ.get('GOOGLE_APPLICATION_CREDENTIALS_JSON'):
+        # Parse JSON credentials from environment variable
+        credentials_json = json.loads(os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'])
+        credentials = service_account.Credentials.from_service_account_info(credentials_json)
+        storage_client = storage.Client(credentials=credentials, project=credentials_json['project_id'])
         bucket_name = os.environ.get('GOOGLE_CLOUD_BUCKET', 'default-bucket')
         bucket = storage_client.bucket(bucket_name)
         GCS_AVAILABLE = True
